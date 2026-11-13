@@ -19,5 +19,5 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-# ... остальной код без изменений ...
+# ... остальной код без изменений ..
 shell: bash
