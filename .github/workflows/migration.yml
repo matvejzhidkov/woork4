@@ -66,13 +66,13 @@ jobs:
             Start-Sleep -Seconds 2
           }
 
-           - name: Run pgloader (Idempotent with include drop)
+      - name: Run pgloader (Idempotent with include drop)
         if: steps.check_status.outputs.already_migrated == 'false'
         env:
           MYSQL_ROOT_PASSWORD: ${{ secrets.DB_MYSQL_ROOT_PASSWORD }}
           DB_POSTGRES_PASSWORD: ${{ secrets.DB_POSTGRES_PASSWORD }}
         run: |
-          # Определяем реальное имя сети, которую создал Docker Compose
+          # Динамически ищем сеть, которую создал Docker Compose (может быть legacy_mattermost_network и т.д.)
           $NETWORK_NAME = (docker network ls --filter "name=mattermost_network" --format "{{.Name}}" | Select-Object -First 1)
           
           if (-not $NETWORK_NAME) {
