@@ -59,16 +59,17 @@ jobs:
         env:
           DB_POSTGRES_PASSWORD: ${{ secrets.DB_POSTGRES_PASSWORD }}
         run: |
-          # Принудительно удаляем старый контейнер Postgres и его данные, чтобы применить новый пароль
+          # Удаляем контейнер и жестко удаляем ВСЕ тома с именем postgres_data
           docker compose -f $env:COMPOSE_FILE rm -s -f -v mattermost-postgres
+          $volumes = (docker volume ls -q -f "name=postgres_data")
+          if ($volumes) {
+            docker volume rm $volumes
+          }
           
-          # Явно задаем переменную окружения для процесса docker compose
+          # Запускаем заново, передавая переменную окружения
           $env:DB_POSTGRES_PASSWORD = "${{ secrets.DB_POSTGRES_PASSWORD }}"
-          
-          # Запускаем контейнер заново
           docker compose -f $env:COMPOSE_FILE up -d mattermost-postgres
           
-          # Ждем, пока база поднимется
           for ($i = 1; $i -le 30; $i++) {
             docker exec mattermost-postgres pg_isready -U mmuser -d mattermost
             if ($LASTEXITCODE -eq 0) { break }
