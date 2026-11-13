@@ -28,22 +28,26 @@ jobs:
             echo "already_migrated=false" >> $env:GITHUB_OUTPUT
           }
           
-      - name: Backup Legacy MySQL
+           - name: Backup Legacy MySQL
         if: steps.check_status.outputs.already_migrated == 'false'
         env:
           MYSQL_ROOT_PASSWORD: ${{ secrets.DB_MYSQL_ROOT_PASSWORD }}
         run: |
+          # Проверяем, передан ли секрет вообще
+          if ([string]::IsNullOrWhiteSpace($env:MYSQL_ROOT_PASSWORD)) {
+            echo "Error: Secret DB_MYSQL_ROOT_PASSWORD is empty or not set!"
+            exit 1
+          }
+
           $BACKUP_NAME = "mattermost_mysql_backup_${{ github.run_id }}.sql"
           $check = docker ps --format "{{.Names}}" | Select-String -Pattern "^mattermost-mysql$"
           if ($check) {
-            # Флаг -p пишется СЛИТНО с паролем
             docker exec mattermost-mysql mysqldump -u root -p"$env:MYSQL_ROOT_PASSWORD" mattermost > $BACKUP_NAME
             
-            # Проверяем, не пустой ли файл создался
             if ((Get-Item $BACKUP_NAME).Length -gt 0) {
               echo "Backup saved: $BACKUP_NAME"
             } else {
-              echo "Error: Backup failed (file is empty, probably wrong password)"
+              echo "Error: Backup failed (file is empty)"
               exit 1
             }
           } else {
