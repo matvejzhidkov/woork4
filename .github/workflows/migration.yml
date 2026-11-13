@@ -1,3 +1,71 @@
+name: Idempotent Mattermost Migration & Upgrade
+on:
+  push:
+    branches: [ "migration" ]
+  workflow_dispatch:
+
+env:
+  COMPOSE_FILE: docker-compose.prod.yml
+  FLAG_FILE: C:\actions-runner\.mattermost_migration_completed
+
+jobs:
+  migrate-and-deploy:
+    runs-on: self-hosted
+    defaults:
+      run:
+        shell: powershell
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check Migration Status
+        id: check_status
+        run: |
+          if (Test-Path "$env:FLAG_FILE") {
+            echo "already_migrated=true" >> $env:GITHUB_OUTPUT
+          } else {
+            echo "already_migrated=false" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Backup Legacy MySQL
+        if: steps.check_status.outputs.already_migrated == 'false'
+        env:
+          MYSQL_ROOT_PASSWORD: ${{ secrets.DB_MYSQL_ROOT_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:MYSQL_ROOT_PASSWORD)) {
+            echo "Error: Secret DB_MYSQL_ROOT_PASSWORD is empty or not set!"
+            exit 1
+          }
+          
+          $BACKUP_NAME = "mattermost_mysql_backup_${{ github.run_id }}.sql"
+          $check = docker ps --format "{{.Names}}" | Select-String -Pattern "^mattermost-mysql$"
+          if ($check) {
+            docker exec mattermost-mysql mysqldump -u root -p"$env:MYSQL_ROOT_PASSWORD" mattermost > $BACKUP_NAME
+            
+            if ((Get-Item $BACKUP_NAME).Length -gt 0) {
+              echo "Backup saved: $BACKUP_NAME"
+            } else {
+              echo "Error: Backup failed (file is empty)"
+              exit 1
+            }
+          } else {
+            echo "Error: mattermost-mysql container is not running"
+            exit 1
+          }
+
+      - name: Start Target PostgreSQL
+        if: steps.check_status.outputs.already_migrated == 'false'
+        env:
+          DB_POSTGRES_PASSWORD: ${{ secrets.DB_POSTGRES_PASSWORD }}
+        run: |
+          docker compose -f $env:COMPOSE_FILE up -d mattermost-postgres
+          for ($i = 1; $i -le 30; $i++) {
+            docker exec mattermost-postgres pg_isready -U mmuser -d mattermost
+            if ($LASTEXITCODE -eq 0) { break }
+            Start-Sleep -Seconds 2
+          }
+
       - name: Run pgloader (Idempotent with include drop)
         if: steps.check_status.outputs.already_migrated == 'false'
         env:
@@ -5,15 +73,8 @@
           DB_POSTGRES_PASSWORD: ${{ secrets.DB_POSTGRES_PASSWORD }}
         run: |
           $NETWORK_NAME = (docker inspect mattermost-postgres -f '{{range $key, $value := .NetworkSettings.Networks}}{{$key}} {{end}}').Trim().Split(" ")[0]
-          
-          if ([string]::IsNullOrWhiteSpace($NETWORK_NAME)) {
-            echo "Error: Could not find network for mattermost-postgres!"
-            exit 1
-          }
-          
           echo "Using network: $NETWORK_NAME"
           
-          # Проверяем, подключен ли MySQL к этой сети, и подключаем, если нет
           $isConnected = (docker inspect mattermost-mysql -f '{{range $key, $value := .NetworkSettings.Networks}}{{$key}} {{end}}') -match $NETWORK_NAME
           if (-not $isConnected) {
             docker network connect $NETWORK_NAME mattermost-mysql
@@ -25,3 +86,26 @@
             --with "include drop" `
             "mysql://root:$env:MYSQL_ROOT_PASSWORD@mattermost-mysql:3306/mattermost" `
             "postgresql://mmuser:$env:DB_POSTGRES_PASSWORD@mattermost-postgres:5432/mattermost"
+
+      - name: Mark Migration as Completed
+        if: steps.check_status.outputs.already_migrated == 'false'
+        run: |
+          New-Item -Path "$env:FLAG_FILE" -ItemType File -Force
+
+      - name: Deploy Upgraded Stack
+        env:
+          DB_POSTGRES_PASSWORD: ${{ secrets.DB_POSTGRES_PASSWORD }}
+        run: |
+          docker compose -f $env:COMPOSE_FILE up -d --remove-orphans
+          Start-Sleep -Seconds 30
+
+      - name: Run Health Checks
+        run: |
+          try {
+            $response = Invoke-WebRequest -Uri "http://localhost:8065/api/v4/system/ping" -UseBasicParsing -ErrorAction Stop
+            echo "Mattermost upgraded successfully and running on Postgres"
+          } catch {
+            echo "Health check failed. Logs:"
+            docker compose -f $env:COMPOSE_FILE logs
+            exit 1
+          }
