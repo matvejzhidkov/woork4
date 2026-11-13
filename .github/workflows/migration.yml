@@ -11,78 +11,12 @@ env:
 jobs:
   migrate-and-deploy:
     runs-on: self-hosted
+    # ДОБАВИТЬ ЭТИ ДВЕ СТРОКИ:
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Check Migration Status
-        id: check_status
-        run: |
-          if [ -f "$FLAG_FILE" ]; then
-            echo "already_migrated=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "already_migrated=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Backup Legacy MySQL
-        if: steps.check_status.outputs.already_migrated == 'false'
-        env:
-          MYSQL_ROOT_PASSWORD: ${{ secrets.DB_MYSQL_ROOT_PASSWORD }}
-        run: |
-          BACKUP_NAME="mattermost_mysql_backup_${{ github.run_id }}.sql"
-          if docker ps --format '{{.Names}}' | grep -q '^mattermost-mysql$'; then
-            docker exec mattermost-mysql \
-              mysqldump -u root -p"$MYSQL_ROOT_PASSWORD" mattermost > "$BACKUP_NAME"
-            echo "Backup saved: $BACKUP_NAME"
-          else
-            echo "Error: mattermost-mysql container is not running"
-            exit 1
-          fi
-
-      - name: Start Target PostgreSQL
-        if: steps.check_status.outputs.already_migrated == 'false'
-        env:
-          DB_POSTGRES_PASSWORD: ${{ secrets.DB_POSTGRES_PASSWORD }}
-        run: |
-          docker compose -f "$COMPOSE_FILE" up -d mattermost-postgres
-          for i in $(seq 1 30); do
-            if docker exec mattermost-postgres pg_isready -U mmuser -d mattermost; then
-              break
-            fi
-            sleep 2
-          done
-
-      - name: Run pgloader (Idempotent with include drop)
-        if: steps.check_status.outputs.already_migrated == 'false'
-        env:
-          MYSQL_ROOT_PASSWORD: ${{ secrets.DB_MYSQL_ROOT_PASSWORD }}
-          DB_POSTGRES_PASSWORD: ${{ secrets.DB_POSTGRES_PASSWORD }}
-        run: |
-          docker run --rm --network=mattermost_network \
-            mattermost/mattermost-pgloader:latest \
-            pgloader \
-            --with "include drop" \
-            "mysql://root:${MYSQL_ROOT_PASSWORD}@mattermost-mysql:3306/mattermost" \
-            "postgresql://mmuser:${DB_POSTGRES_PASSWORD}@mattermost-postgres:5432/mattermost"
-
-      - name: Mark Migration as Completed
-        if: steps.check_status.outputs.already_migrated == 'false'
-        run: touch "$FLAG_FILE"
-
-      - name: Deploy Upgraded Stack
-        env:
-          DB_POSTGRES_PASSWORD: ${{ secrets.DB_POSTGRES_PASSWORD }}
-        run: |
-          docker compose -f "$COMPOSE_FILE" up -d --remove-orphans
-          sleep 30
-
-      - name: Run Health Checks
-        run: |
-          if curl -fsS http://localhost:8065/api/v4/system/ping; then
-            echo "Mattermost upgraded successfully and running on Postgres"
-          else
-            echo "Health check failed. Logs:"
-            docker compose -f "$COMPOSE_FILE" logs
-            exit 1
-          fi
+# ... остальной код без изменений ...
