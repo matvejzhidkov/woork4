@@ -46,7 +46,6 @@ jobs:
           DB_POSTGRES_PASSWORD: ${{ secrets.DB_POSTGRES_PASSWORD }}
         run: |
           docker compose -f "$COMPOSE_FILE" up -d mattermost-postgres
-          # Ждём готовности Postgres, а не просто sleep 10
           for i in $(seq 1 30); do
             if docker exec mattermost-postgres pg_isready -U mmuser -d mattermost; then
               break
@@ -76,7 +75,6 @@ jobs:
           DB_POSTGRES_PASSWORD: ${{ secrets.DB_POSTGRES_PASSWORD }}
         run: |
           docker compose -f "$COMPOSE_FILE" up -d --remove-orphans
-          # Ждём применения внутренних миграций Mattermost
           sleep 30
 
       - name: Run Health Checks
