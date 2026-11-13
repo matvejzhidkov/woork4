@@ -66,13 +66,23 @@ jobs:
             Start-Sleep -Seconds 2
           }
 
-      - name: Run pgloader (Idempotent with include drop)
+           - name: Run pgloader (Idempotent with include drop)
         if: steps.check_status.outputs.already_migrated == 'false'
         env:
           MYSQL_ROOT_PASSWORD: ${{ secrets.DB_MYSQL_ROOT_PASSWORD }}
           DB_POSTGRES_PASSWORD: ${{ secrets.DB_POSTGRES_PASSWORD }}
         run: |
-          docker run --rm --network=mattermost_network `
+          # Определяем реальное имя сети, которую создал Docker Compose
+          $NETWORK_NAME = (docker network ls --filter "name=mattermost_network" --format "{{.Name}}" | Select-Object -First 1)
+          
+          if (-not $NETWORK_NAME) {
+            echo "Error: Could not find mattermost_network!"
+            exit 1
+          }
+          
+          echo "Using network: $NETWORK_NAME"
+          
+          docker run --rm --network=$NETWORK_NAME `
             mattermost/mattermost-pgloader:latest `
             pgloader `
             --with "include drop" `
