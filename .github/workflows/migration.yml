@@ -106,7 +106,12 @@ jobs:
         env:
           DB_POSTGRES_PASSWORD: ${{ secrets.DB_POSTGRES_PASSWORD }}
         run: |
+          # Принудительно удаляем старый контейнер Mattermost, чтобы освободить имя
+          docker rm -f mattermost 2>$null
+          
           $env:DB_POSTGRES_PASSWORD = "${{ secrets.DB_POSTGRES_PASSWORD }}"
+          
+          # Поднимаем новый стек
           docker compose -f $env:COMPOSE_FILE up -d --remove-orphans
           Start-Sleep -Seconds 30
 
