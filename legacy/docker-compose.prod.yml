@@ -12,7 +12,7 @@ services:
       - MM_SERVICESETTINGS_SITEURL=http://localhost:8065
       - MM_TEAMSSETTINGS_ENABLEOPENSERVER=false
     volumes:
-      # ВАЖНО: тот же именованный том, что в legacy — сохраняет аватары и вложения
+      # Тот же именованный том, что в legacy — сохраняет аватары и вложения
       - mattermost_data:/mattermost/data
       - mattermost_logs:/mattermost/logs
     networks:
@@ -40,6 +40,6 @@ networks:
     driver: bridge
 
 volumes:
-  mattermost_data:      # объявлен и в legacy-стеке — данные сохранятся
+  mattermost_data:
   mattermost_logs:
   postgres_data:
