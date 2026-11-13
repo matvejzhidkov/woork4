@@ -27,7 +27,15 @@ jobs:
           } else {
             echo "already_migrated=false" >> $env:GITHUB_OUTPUT
           }
-
+          
+      - name: Test Secret
+        run: |
+          if ("${{ secrets.DB_MYSQL_ROOT_PASSWORD }}" -eq "MM_ROOT_PASSWORD") {
+            echo "Пароль в секрете СОВПАДАЕТ с MM_ROOT_PASSWORD"
+          } else {
+            echo "ПАРОЛЬ НЕ СОВПАДАЕТ! Длина строки: $("${{ secrets.DB_MYSQL_ROOT_PASSWORD }}".Length)"
+          }
+          
       - name: Backup Legacy MySQL
         if: steps.check_status.outputs.already_migrated == 'false'
         env:
