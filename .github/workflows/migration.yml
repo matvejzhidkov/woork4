@@ -27,7 +27,7 @@ jobs:
             echo "already_migrated=false" >> $env:GITHUB_OUTPUT
           }
 
-      - name: Backup Legacy MySQL
+           - name: Backup Legacy MySQL
         if: steps.check_status.outputs.already_migrated == 'false'
         env:
           MYSQL_ROOT_PASSWORD: ${{ secrets.DB_MYSQL_ROOT_PASSWORD }}
@@ -35,13 +35,21 @@ jobs:
           $BACKUP_NAME = "mattermost_mysql_backup_${{ github.run_id }}.sql"
           $check = docker ps --format "{{.Names}}" | Select-String -Pattern "^mattermost-mysql$"
           if ($check) {
+            # В PowerShell переменные окружения вызываются через $env:
+            # Флаг -p пишется СЛИТНО с паролем без пробелов
             docker exec mattermost-mysql mysqldump -u root -p"$env:MYSQL_ROOT_PASSWORD" mattermost > $BACKUP_NAME
-            echo "Backup saved: $BACKUP_NAME"
+            
+            # Проверяем, не пустой ли файл создался
+            if ((Get-Item $BACKUP_NAME).length -gt 0) {
+              echo "Backup saved: $BACKUP_NAME"
+            } else {
+              echo "Error: Backup failed (file is empty, probably wrong password)"
+              exit 1
+            }
           } else {
             echo "Error: mattermost-mysql container is not running"
             exit 1
           }
-
       - name: Start Target PostgreSQL
         if: steps.check_status.outputs.already_migrated == 'false'
         env:
